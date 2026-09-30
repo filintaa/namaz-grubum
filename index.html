@@ -20,13 +20,18 @@
       <nav class="site-nav" aria-label="Ana menü"><a href="#ozellikler">Özellikler</a><a href="privacy.html">Gizlilik</a><a href="support.html">Destek</a></nav>
     </header>
     <main>
-      <section class="hero">
+      <section class="hero" aria-labelledby="hero-title">
         <div class="hero-inner">
-          <div data-reveal>
-            <p class="eyebrow">Birlikte devam et</p>
-            <h1>Namazı grubunla takip et.</h1>
-            <p class="lead">Vakitleri gör, tamamladığın namazları işaretle ve arkadaşlarınla birbirinizi nazikçe destekleyin.</p>
-            <div class="actions"><a class="button" href="support.html">Destek al</a><a class="button secondary" href="#ozellikler">Uygulamayı tanı</a></div>
+          <div class="hero-copy" data-reveal>
+            <p class="eyebrow eyebrow-status">Günlük ritmin, yakınlarınla</p>
+            <h1 id="hero-title">Ritmini koru. <span>Birlikte devam et.</span></h1>
+            <p class="lead">Namaz vakitlerini tek yerde gör, tamamladıklarını işaretle ve güvendiğin insanlarla birbirinize sessizce güç verin.</p>
+            <div class="actions"><a class="button" href="#nasil-calisir">Uygulamayı keşfet</a><a class="button secondary" href="privacy.html">Gizlilik yaklaşımı</a></div>
+            <ul class="hero-points" aria-label="Öne çıkan özellikler">
+              <li>Vakitlere göre günlük takip</li>
+              <li>Yakın çevrenle özel gruplar</li>
+              <li>Baskısız devamlılık görünümü</li>
+            </ul>
           </div>
           <div class="phone-stage" aria-label="Namaz Grubum uygulama ekranı" data-reveal>
             <img class="icon-orbit" src="assets/app-icon.png" alt="Namaz Grubum uygulama ikonu">
@@ -34,25 +39,56 @@
           </div>
         </div>
       </section>
-      <section class="section" id="ozellikler">
-        <div class="section-head" data-reveal><p class="eyebrow">Günlük ritim</p><h2>Takip sade, destek insani.</h2><p class="lead">İbadet düzenini görünür kılan araçlar, yarış baskısı oluşturmadan grubunla devam etmen için tasarlandı.</p></div>
+      <div class="rhythm-rail" aria-hidden="true">
+        <div class="rhythm-track">
+          <span>Vakitleri gör</span><i></i><span>Grubunla tamamla</span><i></i><span>Devamlılığını koru</span><i></i><span>Mahremiyetini yönet</span><i></i>
+          <span>Vakitleri gör</span><i></i><span>Grubunla tamamla</span><i></i><span>Devamlılığını koru</span><i></i><span>Mahremiyetini yönet</span><i></i>
+        </div>
+      </div>
+      <section class="manifesto section" id="ozellikler">
+        <p class="section-number" data-reveal>01 / Yaklaşım</p>
         <div data-reveal>
-          <div class="feature-row"><h3>Doğru vakitler</h3><p>Konumuna veya seçtiğin şehre göre namaz vakitlerini gör; istediğin bildirimleri ve sabah alarmını yönet.</p></div>
-          <div class="feature-row"><h3>Grup desteği</h3><p>Grup oluştur, uygun gruplara katıl, günlük durumu ve 7/30 günlük devamlılığı birlikte takip et.</p></div>
-          <div class="feature-row"><h3>Kontrollü paylaşım</h3><p>Fotoğraflı gruplarda doğrulama fotoğrafını yalnızca kamerayla gönder. Fotoğraflar aktif grup üyelerine görünür ve olağan durumda 12 saat içinde silinir.</p></div>
+          <p class="eyebrow">Takip sade, destek insani</p>
+          <h2>Bir yarış tablosu değil. Birbirini hatırlayan insanların ortak ritmi.</h2>
+          <p class="lead">Namaz Grubum, ibadet düzenini görünür kılarken baskıyı azaltır. Sen kendi akışını takip eder, grubun yalnızca yanında olduğunu hissettirir.</p>
         </div>
       </section>
-      <section class="section" aria-labelledby="ekranlar">
-        <div class="section-head" data-reveal><p class="eyebrow">Uygulamanın içinden</p><h2 id="ekranlar">Grubun, üyelerin ve ilerlemen tek yerde.</h2></div>
-        <div class="gallery" data-reveal>
-          <figure><img src="assets/screens/02-grup-detayi.png" alt="Grup ayrıntısı ekranı"><figcaption>Günlük grup durumu</figcaption></figure>
-          <figure><img src="assets/screens/03-grup-uyeleri.png" alt="Grup üyeleri ekranı"><figcaption>Üyeler ve roller</figcaption></figure>
-          <figure><img src="assets/screens/05-siralama.png" alt="Devamlılık sıralaması ekranı"><figcaption>7 ve 30 günlük görünüm</figcaption></figure>
+      <section class="product-tour" id="nasil-calisir" aria-labelledby="tour-title">
+        <div class="tour-inner">
+          <div class="tour-copy" data-reveal>
+            <p class="section-number">02 / Uygulamanın içinden</p>
+            <p class="eyebrow">Günün akışı, tek yerde</p>
+            <h2 id="tour-title">Vaktini gör. Grubunu aç. Devamını birlikte getir.</h2>
+            <p>Her ekran tek bir işe odaklanır. Günlük durum, üyeler ve devamlılık görünümü kalabalıklaştırılmadan yan yana çalışır.</p>
+            <a class="text-link" href="support.html">Uygulama hakkında yardım al <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="screen-sequence">
+            <figure class="screen-shot screen-shot-wide" data-reveal style="--delay: 80ms">
+              <div><span class="screen-label">01</span><img src="assets/screens/02-grup-detayi.png" alt="Günlük grup durumu ekranı"></div>
+              <figcaption><strong>Bugünün ortak görünümü</strong><span>Kimlerin gününü tamamladığını, grubun ritmini bozmadan gör.</span></figcaption>
+            </figure>
+            <figure class="screen-shot screen-shot-offset" data-reveal style="--delay: 120ms">
+              <div><span class="screen-label">02</span><img src="assets/screens/03-grup-uyeleri.png" alt="Grup üyeleri ve roller ekranı"></div>
+              <figcaption><strong>İnsanlar ve roller</strong><span>Grubundaki üyeleri, yöneticileri ve katılım durumunu tek yerde yönet.</span></figcaption>
+            </figure>
+            <figure class="screen-shot screen-shot-narrow" data-reveal style="--delay: 160ms">
+              <div><span class="screen-label">03</span><img src="assets/screens/05-siralama.png" alt="Yedi ve otuz günlük devamlılık ekranı"></div>
+              <figcaption><strong>Devamlılığın görünür olsun</strong><span>Yedi ve otuz günlük akışa bak; kıyas baskısı yerine sürekliliğe odaklan.</span></figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+      <section class="capabilities section" aria-labelledby="capabilities-title">
+        <div class="capabilities-head" data-reveal><p class="section-number">03 / Günlük kullanım</p><h2 id="capabilities-title">İhtiyacın kadar bildirim. İstediğin kadar paylaşım.</h2></div>
+        <div class="capability-list">
+          <article data-reveal><span>01</span><h3>Konumuna göre doğru vakitler</h3><p>Bulunduğun konumu veya seçtiğin şehri kullan. Namaz vakitlerini gör, istediğin bildirimleri ve sabah alarmını yönet.</p></article>
+          <article data-reveal><span>02</span><h3>Sana uygun grup deneyimi</h3><p>Kendi grubunu oluştur, davetle katıl veya sana uygun grupları keşfet. Üyeleri ve katılım isteklerini aynı akıştan yönet.</p></article>
+          <article data-reveal><span>03</span><h3>Kontrolü sende kalan paylaşım</h3><p>Fotoğraflı gruplarda doğrulama yalnızca kamerayla yapılır. İçerik görünürlüğü ve hesap tercihleri açık biçimde yönetilir.</p></article>
         </div>
       </section>
       <section class="trust">
         <div class="section">
-          <div data-reveal><p class="eyebrow">Güvenli topluluk</p><h2>Paylaşımın sınırı belli.</h2><p>Hesap ve içerik kontrolleri uygulamanın merkezinde yer alır.</p></div>
+          <div data-reveal><p class="section-number">04 / Güvenli topluluk</p><p class="eyebrow">Sınırları sen belirlersin</p><h2>Yakın hisset. Kontrolü elinde tut.</h2><p>Hesap, içerik ve izin kontrolleri uygulamanın merkezinde yer alır.</p></div>
           <div class="trust-list" data-reveal>
             <div><h3>Rıza ve kontrol</h3><p>Konum, bildirim, fotoğraf ve tanılama özellikleri kullanıcı seçimi ve cihaz izinleriyle çalışır.</p></div>
             <div><h3>Engelleme ve şikâyet</h3><p>Kullanıcı, grup ve fotoğraflar uygulama içinden bildirilebilir; istenmeyen kullanıcılar engellenebilir.</p></div>
@@ -60,9 +96,10 @@
           </div>
         </div>
       </section>
-      <section class="section" data-reveal>
-        <p class="eyebrow">Yardıma hazırız</p><h2>Bir sorun mu var?</h2><p class="lead">Hesap, grup, bildirim, vakit veya fotoğraf özellikleri için destek sayfasındaki adımları kullanabilirsin.</p>
-        <div class="actions"><a class="button" href="support.html">Destek sayfası</a><a class="button secondary" href="privacy.html">Gizlilik politikası</a></div>
+      <section class="closing section" data-reveal>
+        <img src="assets/app-icon.png" alt="" aria-hidden="true">
+        <div><p class="eyebrow">Namaz Grubum</p><h2>Birlikte devam etmek için küçük, sakin bir alan.</h2></div>
+        <div><p>Destek, hesap, bildirim ve gizlilik konularındaki tüm yanıtlar tek yerde.</p><div class="actions"><a class="button" href="support.html">Destek sayfası</a><a class="text-link" href="privacy.html">Gizlilik politikası <span aria-hidden="true">→</span></a></div></div>
       </section>
     </main>
     <footer class="site-footer"><nav><a href="privacy.html">Gizlilik ve KVKK</a><a href="terms.html">Kullanım koşulları</a><a href="community.html">Topluluk kuralları</a><a href="account-deletion.html">Hesap silme</a><a href="support.html">Destek</a></nav><span>© 2026 Namaz Grubum · Muhammet Çalış</span></footer>
