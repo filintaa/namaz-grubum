@@ -12,3 +12,5 @@ Bu depo Namaz Grubum uygulamasının herkese açık mağaza, destek ve yasal say
 - Hesap silme: https://filintaa.github.io/namaz-grubum/account-deletion.html
 
 Uygulama kaynak kodu bu depoda yer almaz.
+
+App Store Connect alanları ve gizlilik beyanı için: [APP-STORE-CONNECT.md](APP-STORE-CONNECT.md)
