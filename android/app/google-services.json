@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "146883312066",
+    "project_id": "namaz-grubum",
+    "storage_bucket": "namaz-grubum.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:146883312066:android:29be71f531227d4b54be5b",
+        "android_client_info": {
+          "package_name": "com.namazgrubum.namaz_grubum"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyArTNQL0zROGfe4fz2ocC2US6my3PCePP0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

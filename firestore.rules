@@ -1,0 +1,116 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function userProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isActiveUser() {
+      return signedIn() && userProfile().data.status == 'active';
+    }
+
+    function memberPath(groupId, userId) {
+      return /databases/$(database)/documents/groups/$(groupId)/members/$(userId);
+    }
+
+    function isGroupMember(groupId) {
+      return signedIn() && exists(memberPath(groupId, request.auth.uid))
+        && get(memberPath(groupId, request.auth.uid)).data.status == 'active';
+    }
+
+    function isGroupManager(groupId) {
+      return isGroupMember(groupId)
+        && get(memberPath(groupId, request.auth.uid)).data.role in ['owner', 'moderator'];
+    }
+
+    match /users/{userId} {
+      allow read: if isSelf(userId);
+      allow create: if isSelf(userId)
+        && request.resource.data.status == 'active'
+        && request.resource.data.keys().hasAll([
+          'displayName', 'displayInitial', 'gender', 'madhhab',
+          'countryCode', 'timezone', 'createdAt', 'status'
+        ]);
+      allow update: if isSelf(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'displayInitial', 'madhhab', 'countryCode',
+          'city', 'gender', 'timezone', 'notificationPreferences', 'updatedAt',
+          'onboardingCompleted', 'onboardingCompletedAt',
+          'privacyNoticeVersion', 'privacyNoticeAcceptedAt',
+          'specialCategoryConsent', 'specialCategoryConsentAt',
+          'locationEnabled'
+        ])
+        && request.resource.data.gender in ['female', 'male'];
+      allow delete: if false;
+
+      match /groupMemberships/{groupId} {
+        allow read: if isSelf(userId);
+        allow write: if false;
+      }
+
+      match /prayerDays/{dateKey} {
+        allow read: if isSelf(userId);
+        allow write: if false;
+      }
+    }
+
+    match /groups/{groupId} {
+      allow read: if isActiveUser();
+      allow create, update, delete: if false;
+
+      match /members/{userId} {
+        allow read: if isGroupMember(groupId);
+        allow write: if false;
+      }
+
+      match /joinRequests/{requestId} {
+        allow read: if isGroupManager(groupId) ||
+          (signedIn() && resource.data.userId == request.auth.uid);
+        allow write: if false;
+      }
+
+      match /prayerDays/{dateKey} {
+        allow read: if isGroupMember(groupId);
+        allow write: if false;
+
+        match /checkins/{checkinId} {
+          allow read: if isGroupMember(groupId);
+          allow write: if false;
+        }
+      }
+
+      match /dailyStats/{dateKey} {
+        allow read: if isGroupMember(groupId);
+        allow write: if false;
+      }
+    }
+
+    match /photos/{photoId} {
+      allow read: if isGroupMember(resource.data.groupId)
+        && resource.data.status == 'visible';
+      allow write: if false;
+    }
+
+    match /reports/{reportId} {
+      allow read, write: if false;
+    }
+
+    match /leaderboards/{entryId} {
+      allow read: if isActiveUser();
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "X9D4X4F752.com.namazgrubum.namazGrubum"
+        ],
+        "components": [
+          {
+            "/": "/g/*",
+            "comment": "Namaz Grubum grup davetleri"
+          }
+        ]
+      }
+    ]
+  }
+}

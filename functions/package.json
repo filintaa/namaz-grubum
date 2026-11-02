@@ -1,0 +1,32 @@
+{
+  "name": "namaz-grubum-functions",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions,firestore,auth",
+    "test": "npm run test:security",
+    "test:live-photo": "GOOGLE_CLOUD_PROJECT=namaz-grubum GOOGLE_CLOUD_QUOTA_PROJECT=namaz-grubum node test/live-photo-e2e.mjs",
+    "test:security": "npm run build && firebase --config ../firebase.json emulators:exec --project namaz-grubum --only firestore,storage \"node --test test/security.test.mjs\""
+  },
+  "dependencies": {
+    "adhan": "^4.4.6",
+    "firebase-admin": "14.3.0",
+    "firebase-functions": "7.3.2",
+    "sharp": "^0.35.4",
+    "tz-lookup": "^6.1.25"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@types/tz-lookup": "^6.1.2",
+    "firebase": "^12.18.0",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "displayName": "Namaz Grubum · Functions sunucu hataları",
+  "combiner": "OR",
+  "enabled": true,
+  "conditions": [
+    {
+      "displayName": "Cloud Functions v2 5xx yanıtı",
+      "conditionThreshold": {
+        "filter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.label.response_code_class = \"5xx\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 2,
+        "duration": "0s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": ["resource.label.service_name"]
+          }
+        ],
+        "trigger": {"count": 1}
+      }
+    }
+  ],
+  "notificationChannels": [
+    "projects/namaz-grubum/notificationChannels/15483336871650138390"
+  ],
+  "alertStrategy": {
+    "autoClose": "1800s"
+  },
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "Bir production Cloud Function beş dakikada ikiden fazla 5xx yanıtı verdi. Cloud Run ve Error Reporting kayıtlarını kontrol edin."
+  }
+}

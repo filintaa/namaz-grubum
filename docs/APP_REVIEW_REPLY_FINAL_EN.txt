@@ -1,0 +1,37 @@
+Hello App Review Team,
+
+I own and develop Namaz Grubum. Here are answers to all nine questions before resubmission.
+
+1. Purpose and problem
+Namaz Grubum helps friends coordinate prayer participation, especially waking for morning prayer. Members join groups, record "I am awake" and "I have prayed," see participation, and send member wake-up reminders. Owners manage admission and membership. Optional camera submissions are restricted to active members and normally expire after 12 hours. The problem is shared follow-through beyond an individual alarm.
+
+2. Intended users
+Turkish-speaking Muslims who already pray but struggle with morning or other prayers and want voluntary support from friends, family, or community members. Organizers manage groups; members acknowledge waking, record completion, and encourage one another.
+
+3. Specific value
+A timetable answers "When is prayer?" This app answers "Who in our group has responded, and who may need a reminder?" Membership, prayer-specific shared states, reminders, and optional photos work together. A chat thread requires members to reconstruct that record manually. I am describing this integrated workflow, not claiming no comparable feature exists elsewhere.
+
+4. Beta testing and applied feedback
+Internal TestFlight records show two installed tester accounts: mine and one additional tester, on iPhone SE (2nd generation) and iPhone 14 Pro Max. There are 17 feedback records, not 17 testers: 14 mine and three from the additional tester, dated September 10-October 2, 2026.
+Applied feedback included persistent onboarding completion, separating a crowded group title/role badge, adding a timeout and outcome states to joining, hiding "report own group" for owners/admins, and clearer three-second wake-up confirmation.
+The rejected version is linked to build 8. Later work is in TestFlight builds 9-10; I do not attribute later changes to build 8. Build 10 is VALID and passed 31 automated tests.
+
+5. Standalone product and other apps
+This is standalone, not a suite or branded variant. My closest related app, "Kolay Namaz Ile Namaza Basla" (6806850484), supports people starting or returning to prayer: one daily prayer, individual guidance, and mentor support. Namaz Grubum serves people already praying through shared group participation. Prayer times/reminders overlap; the primary workflows differ. Other account products cover books, goal-based alarms, travel, a matcha journal, gifts, chat analysis, and receipts, not this group service.
+
+6. Why separate from Kolay Namaz?
+Group features could technically be added there. I separated them because beginners need gradual personal guidance, while practicing friends need invitations, admission, shared records, member reminders, and moderation as the main experience. Neither product requires the other; this is not an additional lesson or content pack.
+
+7. Sharing with my other apps
+The applications were developed separately. I did not transfer first-party code, screens, logos, or content from my other apps. Standard dependencies such as Flutter and Firebase may recur.
+
+8. Third-party components and origin
+I developed the code with AI assistance, not by purchasing a completed app to rebrand. Standard packages include Flutter, Firebase, Riverpod, GoRouter, adhan_dart (prayer calculations), and device-capability plugins. Group logic was implemented for this product. Visual references may have informed the interface; the theme references Freud UI Kit. I do not recall the exact extent of that visual reference or claim it as my original work.
+
+9. Client/content ownership
+No client or partner commissioned this app. The idea and brand are mine: helping friends wake and maintain prayer together. I submit through my own account and am responsible for operation, support, and maintenance.
+
+Open "Gruplarim" for participation/members and "Katilim Istekleri" for admission. Prayer actions depend on the prayer period.
+
+Thank you,
+Muhammet Calis
