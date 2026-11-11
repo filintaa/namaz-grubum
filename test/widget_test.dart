@@ -4,16 +4,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:namaz_grubum/app/app.dart';
 import 'package:namaz_grubum/core/data/demo_repository.dart';
 import 'package:namaz_grubum/core/data/repository_provider.dart';
 import 'package:namaz_grubum/core/services/invite_service.dart';
 import 'package:namaz_grubum/core/services/adhan_prayer_time_service.dart';
+import 'package:namaz_grubum/core/services/demo_session_controller.dart';
 import 'package:namaz_grubum/core/domain/models.dart';
 import 'package:namaz_grubum/core/widgets/adaptive_page.dart';
 import 'package:namaz_grubum/features/groups/presentation/create_group_screen.dart';
 import 'package:namaz_grubum/features/groups/presentation/group_detail_screen.dart';
 import 'package:namaz_grubum/features/groups/presentation/join_requests_screen.dart';
+import 'package:namaz_grubum/features/groups/presentation/my_groups_screen.dart';
+import 'package:namaz_grubum/features/home/presentation/home_screen.dart';
 import 'package:namaz_grubum/features/profile/presentation/profile_screen.dart';
 import 'package:namaz_grubum/features/onboarding/presentation/onboarding_screen.dart';
 
@@ -33,6 +37,7 @@ void main() {
           ),
         ),
       );
+      await tester.enterText(find.byType(EditableText).first, 'Test Kullanıcı');
       await tester.tap(find.text('Devam Et'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Devam Et'));
@@ -64,6 +69,7 @@ void main() {
         ),
       ),
     );
+    await tester.enterText(find.byType(EditableText).first, 'Test Kullanıcı');
     await tester.tap(find.text('Devam Et'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Devam Et'));
@@ -73,6 +79,120 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Bildirimlere izin ver'), findsNothing);
     expect(requests, 0);
+  });
+  testWidgets('onboarding blocks an empty name without throwing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+
+    await tester.tap(find.text('Devam Et'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Devam etmek için görünen adını yaz.'), findsOneWidget);
+    expect(find.text('İsmin'), findsOneWidget);
+    expect(find.text('Mezhep'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('onboarding requires a city for prayer times', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+    await tester.enterText(find.byType(EditableText).first, 'Test Kullanıcı');
+    await tester.tap(find.text('Devam Et'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(EditableText).last, '');
+    await tester.tap(find.text('Devam Et'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Namaz vakitleri için bir şehir yaz.'), findsOneWidget);
+    expect(find.text('Bildirimler'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('my groups refresh after returning does not throw', (
+    tester,
+  ) async {
+    final router = GoRouter(
+      initialLocation: '/home/groups',
+      routes: <RouteBase>[
+        GoRoute(
+          path: '/home/groups',
+          builder: (context, state) => const MyGroupsScreen(),
+        ),
+        GoRoute(
+          path: '/home/groups/:groupId',
+          builder: (context, state) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: () => context.pop(),
+                child: const Text('Grup detayından dön'),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appRepositoryProvider.overrideWithValue(DemoAppRepository()),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Üsküdar Sabah Halkası'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Grup detayından dön'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Gruplarım'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home screen shows empty state with options when user has no groups', (
+    tester,
+  ) async {
+    final repository = _EmptyGroupsRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appRepositoryProvider.overrideWithValue(repository)],
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Henüz bir grubun yok'), findsOneWidget);
+    expect(find.text('Grup Kur'), findsOneWidget);
+    expect(find.text('Gruba Dahil Ol'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('home screen displays joined groups when user has groups', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appRepositoryProvider.overrideWithValue(DemoAppRepository()),
+        ],
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('Gruplarım'), findsOneWidget);
+    expect(find.text('Üsküdar Sabah Halkası'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
   });
   test('invite links accept only supported group routes', () {
     expect(
@@ -91,6 +211,22 @@ void main() {
       ),
       isNull,
     );
+  });
+
+  test('app router defines root and invite routes', () {
+    final matchRoot = appRouter.configuration.findMatch(Uri.parse('/'));
+    expect(matchRoot.isNotEmpty, isTrue);
+
+    final matchInvite = appRouter.configuration.findMatch(
+      Uri.parse('/g/sabah-sekerleri'),
+    );
+    expect(matchInvite.isNotEmpty, isTrue);
+  });
+
+  test('invite service persists pending group ID when not onboarded', () {
+    InviteService.instance.setPendingGroupId('pending-group-xyz');
+    expect(InviteService.instance.takePendingGroupId(), 'pending-group-xyz');
+    expect(InviteService.instance.takePendingGroupId(), isNull);
   });
   test('prayer labels are localized', () {
     expect(Prayer.fajr.label, 'Sabah');
@@ -160,6 +296,59 @@ void main() {
     expect(currentUser.role, GroupRole.owner);
     expect(currentUser.role.canManage, isTrue);
   });
+
+  test('demo onboarding choices persist as one session state', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final session = DemoSessionController.instance;
+    await session.clear();
+    addTearDown(session.clear);
+
+    await session.completeOnboarding(
+      displayName: 'Ayşe Yılmaz',
+      city: 'Ankara',
+      madhhab: Madhhab.shafii,
+      notificationsEnabled: false,
+    );
+
+    expect(session.onboardingComplete, isTrue);
+    expect(session.displayName, 'Ayşe Yılmaz');
+    expect(session.city, 'Ankara');
+    expect(session.madhhab, Madhhab.shafii);
+    expect(session.notificationsEnabled, isFalse);
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString('demo_display_name'), 'Ayşe Yılmaz');
+    expect(preferences.getBool('demo_notifications_enabled'), isFalse);
+  });
+
+  test(
+    'a created demo group remains discoverable and owned by the user',
+    () async {
+      final repository = DemoAppRepository();
+      final id = await repository.createGroup(
+        const GroupDraft(
+          name: 'Yeni Test Grubu',
+          countryCode: 'TR',
+          city: 'İstanbul',
+          prayers: <Prayer>{Prayer.fajr, Prayer.isha},
+          verificationType: VerificationType.photo,
+          joinApprovalRequired: true,
+          logoEmoji: '🌙',
+        ),
+      );
+
+      final created = await repository.group(id);
+      final mine = await repository.myGroups();
+      final members = await repository.groupMembers(id);
+
+      expect(created?.name, 'Yeni Test Grubu');
+      expect(created?.country, 'Türkiye');
+      expect(created?.memberCount, 1);
+      expect(mine.map((group) => group.id), contains(id));
+      expect(members, hasLength(1));
+      expect(members.single.role, GroupRole.owner);
+      expect(members.single.isCurrentUser, isTrue);
+    },
+  );
 
   test('demo join requests can be resolved', () async {
     final repository = DemoAppRepository();
@@ -327,6 +516,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
+    await tester.enterText(find.byType(EditableText).first, 'Test Kullanıcı');
+
     await tester.tap(find.text('Devam Et'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -340,6 +531,26 @@ void main() {
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
     tester.platformDispatcher.clearTextScaleFactorTestValue();
+  });
+
+  testWidgets('onboarding fits an iPad without layout errors', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.view.physicalSize = const Size(2048, 2732);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(const NamazGrubumApp());
+    await tester.pumpAndSettle();
+    expect(find.text('Namaza birlikte hazırlan.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    debugDefaultTargetPlatformOverride = null;
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
   });
 
   testWidgets('titled pages start below the iOS navigation bar', (
@@ -481,4 +692,9 @@ class _PendingJoinRepository extends DemoAppRepository {
 
   @override
   Future<bool> hasPendingJoinRequest(String groupId) async => true;
+}
+
+class _EmptyGroupsRepository extends DemoAppRepository {
+  @override
+  Future<List<GroupSummary>> myGroups() async => const <GroupSummary>[];
 }

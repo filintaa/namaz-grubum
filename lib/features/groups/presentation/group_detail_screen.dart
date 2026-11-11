@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -210,12 +211,24 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
       if (approved && mounted) {
         setState(() => _groupData = _loadGroup());
       }
+    } on FirebaseFunctionsException catch (error) {
+      if (mounted) {
+        final message = error.message?.trim();
+        await _showMessage(
+          (message != null && message.isNotEmpty)
+              ? message
+              : 'Gruba katılamadın. Tekrar dene.',
+        );
+      }
     } catch (error) {
       if (mounted) {
+        final errStr = error.toString();
         await _showMessage(
-          error.toString().contains('dolu')
+          errStr.contains('dolu')
               ? 'Bu grup dolu.'
-              : 'Gruba katılamadın. Tekrar dene.',
+              : errStr.contains('timeout') || errStr.contains('Timeout')
+                  ? 'Bağlantı zaman aşımına uğradı. Tekrar dene.'
+                  : 'Gruba katılamadın. Tekrar dene.',
         );
       }
     } finally {

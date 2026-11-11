@@ -43,7 +43,7 @@ Future<void> _bootstrap() async {
           ? const AppleDebugProvider()
           : const AppleAppAttestWithDeviceCheckFallbackProvider(),
     );
-    await TelemetryService.instance.initialize();
+    unawaited(TelemetryService.instance.initialize());
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
     PlatformDispatcher.instance.onError = (error, stack) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);

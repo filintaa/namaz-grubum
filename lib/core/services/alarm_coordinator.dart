@@ -60,6 +60,7 @@ class AlarmCoordinator {
   void Function(String groupId)? _onOpenGroup;
   bool _initialized = false;
   Future<void> _notificationUpdates = Future<void>.value();
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _membershipsSubscription;
 
   Future<void> _updateNotifications(Future<void> Function() action) {
     final update = _notificationUpdates.then((_) => action());
@@ -70,8 +71,14 @@ class AlarmCoordinator {
 
   Future<void> initialize({void Function(String groupId)? onOpenGroup}) async {
     _onOpenGroup = onOpenGroup;
+    if (Firebase.apps.isEmpty) return;
     final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
+    if (userId == null) {
+      await _membershipsSubscription?.cancel();
+      _membershipsSubscription = null;
+      await _updateNotifications(_alarms.cancelAllPrayerAlarms);
+      return;
+    }
     var timezone = 'Europe/Istanbul';
     final profile = await FirebaseFirestore.instance.doc('users/$userId').get();
     timezone = profile.data()?['timezone'] as String? ?? timezone;
@@ -81,7 +88,38 @@ class AlarmCoordinator {
       onBackgroundResponse: prayerAlarmBackgroundResponse,
     );
     _initialized = true;
+
+    // Listen to changes in user's group memberships so when they join, leave,
+    // or get approved/removed, their prayer alarms automatically update.
+    await _membershipsSubscription?.cancel();
+    _membershipsSubscription = FirebaseFirestore.instance
+        .collection('users/$userId/groupMemberships')
+        .snapshots()
+        .listen(
+          (_) => unawaited(reschedule()),
+          onError: (Object error) {
+            debugPrint('Group memberships notification listener failed: $error');
+          },
+        );
+
     await _scheduleAvailableDays();
+  }
+
+  Future<void> reschedule() async {
+    if (Firebase.apps.isEmpty) return;
+    if (!_initialized) {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+      await initialize(onOpenGroup: _onOpenGroup);
+      return;
+    }
+    await _scheduleAvailableDays();
+  }
+
+  Future<void> cancelAll() async {
+    await _membershipsSubscription?.cancel();
+    _membershipsSubscription = null;
+    await _updateNotifications(_alarms.cancelAllPrayerAlarms);
   }
 
   Future<bool> requestPermissionAndSchedule() async {
@@ -101,7 +139,61 @@ class AlarmCoordinator {
     groupId: groupId,
   );
 
+  @visibleForTesting
+  static Set<Prayer> extractActivePrayersFromGroupData(
+    List<Map<String, dynamic>> groups,
+  ) {
+    final activePrayers = <Prayer>{};
+    for (final group in groups) {
+      final status = group['status'] as String?;
+      if (status != null && status != 'active') continue;
+      final rawPrayers = group['prayers'] as List<dynamic>? ?? const [];
+      for (final raw in rawPrayers) {
+        if (raw is String) {
+          final prayer = Prayer.values
+              .where((item) => item.name == raw)
+              .firstOrNull;
+          if (prayer != null) {
+            activePrayers.add(prayer);
+          }
+        }
+      }
+    }
+    return activePrayers;
+  }
+
+  Future<Set<Prayer>> _fetchActiveGroupPrayers(String userId) async {
+    try {
+      final memberships = await FirebaseFirestore.instance
+          .collection('users/$userId/groupMemberships')
+          .where('status', isEqualTo: 'active')
+          .get();
+      if (memberships.docs.isEmpty) return const <Prayer>{};
+
+      final groupIds = memberships.docs
+          .map((doc) => doc.data()['groupId'] as String? ?? doc.id)
+          .toSet();
+
+      final groupDocs = await Future.wait(
+        groupIds.map(
+          (id) => FirebaseFirestore.instance.doc('groups/$id').get(),
+        ),
+      );
+
+      return extractActivePrayersFromGroupData(
+        groupDocs
+            .where((doc) => doc.exists && doc.data() != null)
+            .map((doc) => doc.data()!)
+            .toList(),
+      );
+    } catch (error) {
+      debugPrint('Failed to fetch active group prayers: $error');
+      return const <Prayer>{};
+    }
+  }
+
   Future<void> _scheduleAvailableDays() async {
+    if (Firebase.apps.isEmpty) return;
     final now = tz.TZDateTime.now(tz.local);
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
@@ -114,6 +206,15 @@ class AlarmCoordinator {
       await _updateNotifications(_alarms.cancelAllPrayerAlarms);
       return;
     }
+
+    // A user must only receive prayer notifications if they have joined at least one group.
+    // Reminders are strictly limited to the prayers tracked by their active groups.
+    final activePrayers = await _fetchActiveGroupPrayers(userId);
+    if (activePrayers.isEmpty) {
+      await _updateNotifications(_alarms.cancelAllPrayerAlarms);
+      return;
+    }
+
     final alarms = <PrayerAlarm>[];
     for (final date in <DateTime>[
       for (var offset = -1; offset < 8; offset++)
@@ -125,7 +226,7 @@ class AlarmCoordinator {
           .get();
       final windows = day.data()?['windows'] as Map<String, dynamic>?;
       if (windows == null) continue;
-      for (final prayer in Prayer.values) {
+      for (final prayer in activePrayers) {
         if (preferences.getBool(_completedKey(userId, key, prayer)) == true) {
           continue;
         }
@@ -205,9 +306,37 @@ class AlarmCoordinator {
     if (userId == null) return true;
     final preferences = await SharedPreferences.getInstance();
     await preferences.reload();
-    return preferences.getBool('prayer_notifications_enabled_$userId') ==
-            false ||
-        preferences.getBool(_completedKey(userId, dateKey, prayer)) == true;
+    if (preferences.getBool('prayer_notifications_enabled_$userId') == false ||
+        preferences.getBool(_completedKey(userId, dateKey, prayer)) == true) {
+      return true;
+    }
+    if (Firebase.apps.isEmpty) return false;
+    try {
+      final memberships = await FirebaseFirestore.instance
+          .collection('users/$userId/groupMemberships')
+          .where('status', isEqualTo: 'active')
+          .get();
+      if (memberships.docs.isEmpty) return true;
+      final groupIds = memberships.docs
+          .map((doc) => doc.data()['groupId'] as String? ?? doc.id)
+          .toSet();
+      final groupDocs = await Future.wait(
+        groupIds.map(
+          (id) => FirebaseFirestore.instance.doc('groups/$id').get(),
+        ),
+      );
+      final tracksPrayer = groupDocs.any((doc) {
+        if (!doc.exists) return false;
+        final status = doc.data()?['status'] as String?;
+        if (status != null && status != 'active') return false;
+        final rawPrayers = doc.data()?['prayers'] as List<dynamic>?;
+        return rawPrayers?.contains(prayer.name) == true;
+      });
+      if (!tracksPrayer) return true;
+    } catch (_) {
+      // Best-effort check; do not suppress due to transient network failure
+    }
+    return false;
   }
 
   /// Plans an escalating but bounded reminder sequence for a prayer window.

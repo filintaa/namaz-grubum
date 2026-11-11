@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'alarm_coordinator.dart';
+import 'demo_session_controller.dart';
 import 'push_notification_service.dart';
 import 'offline_action_queue.dart';
 import 'prayer_schedule_sync_service.dart';
@@ -24,6 +26,7 @@ class AppSessionController extends ChangeNotifier with WidgetsBindingObserver {
   String? _userId;
   void Function(String groupId)? _onOpenGroup;
   DateTime? _lastResumeRefresh;
+  bool _replacingInvalidUser = false;
 
   bool get initialized => _initialized;
   bool get onboardingComplete => _onboardingComplete;
@@ -37,16 +40,20 @@ class AppSessionController extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     WidgetsBinding.instance.addObserver(this);
     if (Firebase.apps.isEmpty) {
+      await DemoSessionController.instance.initialize();
+      _onboardingComplete = DemoSessionController.instance.onboardingComplete;
       _initialized = true;
       notifyListeners();
       return;
     }
 
     await _authSubscription?.cancel();
-    _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
-      (user) => unawaited(_configureUser(user)),
-    );
     await refreshForCurrentUser();
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (_replacingInvalidUser) return;
+      if (_initialized && user?.uid == _userId) return;
+      unawaited(_configureUser(user));
+    });
   }
 
   @override
@@ -72,6 +79,7 @@ class AppSessionController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> markOnboardingComplete() async {
     if (Firebase.apps.isEmpty) {
+      await DemoSessionController.instance.initialize();
       _onboardingComplete = true;
       _initialized = true;
       notifyListeners();
@@ -95,6 +103,12 @@ class AppSessionController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> clearCompletion({String? forUserId}) async {
+    if (Firebase.apps.isEmpty) {
+      await DemoSessionController.instance.clear();
+      _onboardingComplete = false;
+      notifyListeners();
+      return;
+    }
     final userId = forUserId ?? _userId;
     if (userId != null) {
       final preferences = await SharedPreferences.getInstance();
@@ -105,6 +119,10 @@ class AppSessionController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> restartOnboarding() async {
+    if (Firebase.apps.isEmpty) {
+      await clearCompletion();
+      return;
+    }
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     await clearCompletion(forUserId: user.uid);
@@ -119,15 +137,42 @@ class AppSessionController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _configureUser(User? initialUser) async {
     final revision = ++_revision;
-    _initialized = false;
-    notifyListeners();
 
-    var user = initialUser;
-    user ??= (await FirebaseAuth.instance.signInAnonymously()).user;
+    final preferences = await SharedPreferences.getInstance();
+    var user = initialUser ?? (Firebase.apps.isNotEmpty ? FirebaseAuth.instance.currentUser : null);
+
+    // Fast path: if the user was already authenticated in a previous launch,
+    // use cached onboarding state so the UI becomes interactive immediately.
+    if (user != null) {
+      final cachedComplete = preferences.getBool(_preferenceKey(user.uid));
+      if (cachedComplete != null && !_initialized) {
+        _userId = user.uid;
+        _onboardingComplete = cachedComplete;
+        _initialized = true;
+        notifyListeners();
+      }
+    }
+
+    if (user == null && Firebase.apps.isNotEmpty) {
+      user = (await FirebaseAuth.instance.signInAnonymously()).user;
+    }
     if (user == null || revision != _revision) return;
 
+    try {
+      // Validate credential without forcing an expensive network round-trip.
+      await user.getIdToken();
+    } on FirebaseAuthException catch (error) {
+      if (_isInvalidUserCredential(error.code)) {
+        user = await _replaceInvalidUser();
+        if (user == null || revision != _revision) return;
+      } else {
+        rethrow;
+      }
+    }
+
     final reference = FirebaseFirestore.instance.doc('users/${user.uid}');
-    var snapshot = await reference.get();
+    var snapshot = await _readUserProfile(reference, user);
+    final profileExisted = snapshot.exists;
     if (!snapshot.exists) {
       final now = FieldValue.serverTimestamp();
       await reference.set(<String, Object?>{
@@ -149,11 +194,10 @@ class AppSessionController extends ChangeNotifier with WidgetsBindingObserver {
     if (revision != _revision) return;
 
     final data = snapshot.data() ?? const <String, dynamic>{};
-    final preferences = await SharedPreferences.getInstance();
     final localComplete = preferences.getBool(_preferenceKey(user.uid));
     final displayName = (data['displayName'] as String? ?? '').trim();
     final complete =
-        localComplete == true ||
+        (profileExisted && localComplete == true) ||
         data['onboardingCompleted'] == true ||
         (displayName.isNotEmpty && displayName != 'Misafir');
     final suspended = data['status'] == 'suspended';
@@ -161,17 +205,73 @@ class AppSessionController extends ChangeNotifier with WidgetsBindingObserver {
       await preferences.setBool(_preferenceKey(user.uid), true);
     }
 
+    final stateChanged = _userId != user.uid ||
+        _onboardingComplete != complete ||
+        _accountSuspended != suspended ||
+        !_initialized;
+
     _userId = user.uid;
     _onboardingComplete = complete;
     _accountSuspended = suspended;
     _initialized = true;
-    notifyListeners();
+    if (stateChanged) {
+      notifyListeners();
+    }
 
     // Routing only needs the session decision above. Network-backed services
     // can become ready in the background instead of holding the launch screen.
     unawaited(
       _initializeUserServices(complete: complete, suspended: suspended),
     );
+  }
+
+  Future<void> _refreshClientCredentials(User user) async {
+    try {
+      await user.getIdToken(true);
+    } catch (error) {
+      debugPrint('ID token refresh failed during session setup: $error');
+    }
+    try {
+      await FirebaseAppCheck.instance.getToken(true);
+    } catch (error) {
+      // A temporary App Check refresh problem should not prevent an existing
+      // authenticated user from reaching the profile read/retry below.
+      debugPrint('App Check token refresh failed during session setup: $error');
+    }
+  }
+
+  bool _isInvalidUserCredential(String code) => const <String>{
+    'invalid-user-token',
+    'user-disabled',
+    'user-not-found',
+    'user-token-expired',
+  }.contains(code);
+
+  Future<User?> _replaceInvalidUser() async {
+    _replacingInvalidUser = true;
+    try {
+      await FirebaseAuth.instance.signOut();
+      return (await FirebaseAuth.instance.signInAnonymously()).user;
+    } finally {
+      _replacingInvalidUser = false;
+    }
+  }
+
+  Future<DocumentSnapshot<Map<String, dynamic>>> _readUserProfile(
+    DocumentReference<Map<String, dynamic>> reference,
+    User user,
+  ) async {
+    try {
+      return await reference.get();
+    } on FirebaseException catch (error) {
+      if (error.code != 'permission-denied') rethrow;
+      // A clean install can briefly observe auth before both the ID token and
+      // App Check token are accepted by Firestore. Refresh once and retry;
+      // persistent rule failures still surface on the second read.
+      await _refreshClientCredentials(user);
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      return reference.get(const GetOptions(source: Source.server));
+    }
   }
 
   Future<void> _initializeUserServices({

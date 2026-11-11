@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../core/domain/models.dart';
 import '../core/services/app_session_controller.dart';
+import '../core/services/invite_service.dart';
 
 import '../core/theme/app_theme.dart';
 import '../features/groups/presentation/create_group_screen.dart';
@@ -29,9 +30,31 @@ final GoRouter appRouter = GoRouter(
     defaultValue: '/onboarding',
   ),
   refreshListenable: AppSessionController.instance,
+  onException: (context, state, router) {
+    final groupId = InviteService.groupIdFromUri(state.uri);
+    if (groupId != null) {
+      if (AppSessionController.instance.onboardingComplete) {
+        router.go('/home/groups/$groupId');
+      } else {
+        InviteService.instance.setPendingGroupId(groupId);
+        router.go('/onboarding');
+      }
+      return;
+    }
+    router.go('/home');
+  },
   redirect: (context, state) {
     final session = AppSessionController.instance;
     if (!session.initialized) return null;
+    final inviteGroupId = InviteService.groupIdFromUri(state.uri);
+    if (inviteGroupId != null) {
+      if (session.onboardingComplete) {
+        return '/home/groups/$inviteGroupId';
+      } else {
+        InviteService.instance.setPendingGroupId(inviteGroupId);
+        return '/onboarding';
+      }
+    }
     final onboarding = state.matchedLocation == '/onboarding';
     final legal = state.matchedLocation.startsWith('/legal/');
     final suspended = state.matchedLocation == '/account-suspended';
@@ -42,10 +65,27 @@ final GoRouter appRouter = GoRouter(
     if (!session.onboardingComplete && !onboarding && !legal) {
       return '/onboarding';
     }
-    if (session.onboardingComplete && onboarding) return '/home';
+    if (session.onboardingComplete &&
+        (onboarding || state.matchedLocation == '/')) {
+      return '/home';
+    }
     return null;
   },
   routes: <RouteBase>[
+    GoRoute(
+      path: '/',
+      redirect: (context, state) => '/home',
+    ),
+    GoRoute(
+      path: '/g/:groupId',
+      redirect: (context, state) {
+        final groupId = state.pathParameters['groupId'];
+        if (groupId != null && groupId.isNotEmpty) {
+          return '/home/groups/$groupId';
+        }
+        return '/home';
+      },
+    ),
     GoRoute(
       path: '/onboarding',
       builder: (context, state) => const OnboardingScreen(),

@@ -12,9 +12,11 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../../../core/data/repository_provider.dart';
 import '../../../core/domain/models.dart';
+import '../../../core/services/adhan_prayer_time_service.dart';
+import '../../../core/services/demo_session_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/adaptive_page.dart';
-import '../../../core/widgets/group_avatar.dart';
+import '../../../core/widgets/group_card.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -24,194 +26,306 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  late Future<List<GroupSummary>> _groups;
-  String _query = '';
-  String? _nextCursor;
-  bool _loadingMore = false;
-  Timer? _searchDebounce;
+  late Future<List<GroupSummary>> _myGroups;
 
   @override
   void initState() {
     super.initState();
-    _groups = _firstPage('');
+    _reload();
   }
 
-  Future<List<GroupSummary>> _firstPage(String query) async {
-    final page = await ref
-        .read(appRepositoryProvider)
-        .discoverGroupPage(query: query);
-    _nextCursor = page.nextCursor;
-    return page.groups;
+  void _reload() {
+    _myGroups = ref.read(appRepositoryProvider).myGroups();
   }
 
-  void _search(String query) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
-      if (!mounted) return;
-      setState(() {
-        _query = query;
-        _nextCursor = null;
-        _groups = _firstPage(query);
-      });
+  Future<void> _refresh() async {
+    final next = ref.read(appRepositoryProvider).myGroups();
+    setState(() {
+      _myGroups = next;
     });
-  }
-
-  @override
-  void dispose() {
-    _searchDebounce?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _loadMore() async {
-    final cursor = _nextCursor;
-    if (_loadingMore || cursor == null) return;
-    setState(() => _loadingMore = true);
-    try {
-      final current = await _groups;
-      final page = await ref
-          .read(appRepositoryProvider)
-          .discoverGroupPage(query: _query, cursor: cursor);
-      if (!mounted) return;
-      setState(() {
-        _nextCursor = page.nextCursor;
-        _groups = Future.value(<GroupSummary>[...current, ...page.groups]);
-      });
-    } finally {
-      if (mounted) setState(() => _loadingMore = false);
-    }
+    await next;
   }
 
   @override
   Widget build(BuildContext context) => AdaptivePage(
-    body: CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: <Widget>[
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                const _TopBar(),
-                const SizedBox(height: 18),
-                const _PrayerCard(),
-                const SizedBox(height: 16),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: AdaptiveTextField(
-                        placeholder: 'Grup, şehir veya ülke ara',
-                        prefixIcon: Icons.search_rounded,
-                        onChanged: _search,
+    body: RefreshIndicator.adaptive(
+      onRefresh: _refresh,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: <Widget>[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const _TopBar(),
+                  const SizedBox(height: 18),
+                  const _PrayerCard(),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: <Widget>[
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            SectionTitle('Gruplarım'),
+                            SizedBox(height: 3),
+                            Text(
+                              'Dahil olduğun namaz halkaları',
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Semantics(
-                      button: true,
-                      label: 'Yeni grup oluştur',
-                      child: Material(
-                        color: AppColors.orange,
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () async {
-                            final created = await context.push<bool>(
-                              '/home/create-group',
-                            );
-                            if (created == true && mounted) _search('');
-                          },
-                          child: const SizedBox.square(
-                            dimension: 56,
-                            child: Icon(Icons.add_rounded, color: Colors.white),
+                      Semantics(
+                        button: true,
+                        label: 'Yeni grup oluştur',
+                        child: Material(
+                          color: AppColors.orange,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () async {
+                              final created = await context.push<bool>(
+                                '/home/create-group',
+                              );
+                              if (created == true && mounted) {
+                                setState(_reload);
+                              }
+                            },
+                            child: const SizedBox.square(
+                              dimension: 46,
+                              child: Icon(
+                                Icons.add_rounded,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 28),
-                const SectionTitle('Sana uygun gruplar'),
-                const SizedBox(height: 4),
-                const Text(
-                  'Aynı vakitte aynı niyette buluş.',
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontWeight: FontWeight.w500,
+                    ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-        FutureBuilder<List<GroupSummary>>(
-          future: _groups,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const SliverPadding(
-                padding: EdgeInsets.fromLTRB(18, 12, 18, 120),
-                sliver: SliverToBoxAdapter(child: _GroupSkeleton()),
-              );
-            }
-            if (snapshot.hasError) {
-              return SliverFillRemaining(
-                hasScrollBody: false,
-                child: _MessageState(
-                  icon: Icons.cloud_off_outlined,
-                  title: 'Gruplar yüklenemedi',
-                  message: 'Bağlantını kontrol edip tekrar deneyebilirsin.',
-                  action: 'Tekrar dene',
-                  onTap: () => _search(''),
+          FutureBuilder<List<GroupSummary>>(
+            future: _myGroups,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SliverPadding(
+                  padding: EdgeInsets.fromLTRB(18, 12, 18, 120),
+                  sliver: SliverToBoxAdapter(child: _GroupSkeleton()),
+                );
+              }
+              if (snapshot.hasError) {
+                return SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _MessageState(
+                    icon: Icons.cloud_off_outlined,
+                    title: 'Grupların yüklenemedi',
+                    message: 'Bağlantını kontrol edip tekrar deneyebilirsin.',
+                    action: 'Tekrar dene',
+                    onTap: () => setState(_reload),
+                  ),
+                );
+              }
+              final groups = snapshot.data ?? const <GroupSummary>[];
+              if (groups.isEmpty) {
+                return SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 10, 18, 120),
+                    child: _NoGroupsCard(
+                      onCreateGroup: () async {
+                        final created = await context.push<bool>(
+                          '/home/create-group',
+                        );
+                        if (created == true && mounted) {
+                          setState(_reload);
+                        }
+                      },
+                      onExploreGroups: () => context.go('/group'),
+                    ),
+                  ),
+                );
+              }
+              return SliverPadding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 120),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      if (index == groups.length) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: Center(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.brown,
+                                side: const BorderSide(
+                                  color: AppColors.line,
+                                  width: 1.2,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              onPressed: () => context.go('/group'),
+                              icon: const Icon(
+                                Icons.explore_outlined,
+                                size: 18,
+                              ),
+                              label: const Text(
+                                'Daha fazla grup keşfet',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      final group = groups[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: GroupCard(
+                          group: group,
+                          onTap: () async {
+                            await context.push('/home/groups/${group.id}');
+                            if (mounted) setState(_reload);
+                          },
+                        ),
+                      );
+                    },
+                    childCount: groups.length + 1,
+                  ),
                 ),
               );
-            }
-            final groups = snapshot.data ?? const <GroupSummary>[];
-            if (groups.isEmpty) {
-              return const SliverFillRemaining(
-                hasScrollBody: false,
-                child: _MessageState(
-                  icon: Icons.search_off_rounded,
-                  title: 'Eşleşen grup yok',
-                  message: 'Başka bir grup adı, şehir veya ülke arayabilirsin.',
-                ),
-              );
-            }
-            return SliverPadding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 120),
-              sliver: SliverList.separated(
-                itemCount: groups.length + (_nextCursor == null ? 0 : 1),
-                separatorBuilder: (_, _) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  if (index == groups.length) {
-                    return AdaptiveSecondaryButton(
-                      label: _loadingMore ? 'Yükleniyor…' : 'Daha fazla göster',
-                      onPressed: _loadingMore ? null : _loadMore,
-                    );
-                  }
-                  return TweenAnimationBuilder<double>(
-                    duration: Duration(milliseconds: 360 + (index * 80)),
-                    curve: Curves.easeOutCubic,
-                    tween: Tween<double>(begin: 0, end: 1),
-                    builder: (context, value, child) => Opacity(
-                      opacity: value,
-                      child: Transform.translate(
-                        offset: Offset(0, 14 * (1 - value)),
-                        child: child,
-                      ),
-                    ),
-                    child: _GroupCard(
-                      group: groups[index],
-                      onTap: () =>
-                          context.push('/home/groups/${groups[index].id}'),
-                    ),
-                  );
-                },
-              ),
-            );
-          },
-        ),
-      ],
+            },
+          ),
+        ],
+      ),
     ),
   );
+}
+
+class _NoGroupsCard extends StatelessWidget {
+  const _NoGroupsCard({
+    required this.onCreateGroup,
+    required this.onExploreGroups,
+  });
+
+  final VoidCallback onCreateGroup;
+  final VoidCallback onExploreGroups;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 26, 20, 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.line, width: .8),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0C5B3E2B),
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: <Widget>[
+          Container(
+            width: 60,
+            height: 60,
+            decoration: const BoxDecoration(
+              color: AppColors.greenMist,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.groups_outlined,
+              color: AppColors.brown,
+              size: 30,
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Henüz bir grubun yok',
+            style: TextStyle(
+              color: AppColors.brown,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Namazlarını cemaat şuuruyla vaktinde kılmak için sana uygun bir gruba dahil olabilir veya arkadaşlarınla kendi grubunu kurabilirsin.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.muted,
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.orange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: onCreateGroup,
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                  label: const Text(
+                    'Grup Kur',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.brown,
+                    side: const BorderSide(
+                      color: AppColors.brown,
+                      width: 1.2,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: onExploreGroups,
+                  icon: const Icon(Icons.search_rounded, size: 20),
+                  label: const Text(
+                    'Gruba Dahil Ol',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TopBar extends StatelessWidget {
@@ -222,7 +336,18 @@ class _TopBar extends StatelessWidget {
     final user = Firebase.apps.isNotEmpty
         ? FirebaseAuth.instance.currentUser
         : null;
-    if (user == null) return _content('Muhammet');
+    if (user == null) {
+      return AnimatedBuilder(
+        animation: DemoSessionController.instance,
+        builder: (context, _) {
+          final fullName = DemoSessionController.instance.displayName.trim();
+          final firstName = fullName.split(RegExp(r'\s+')).firstOrNull;
+          return _content(
+            firstName == null || firstName.isEmpty ? 'Misafir' : firstName,
+          );
+        },
+      );
+    }
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance.doc('users/${user.uid}').snapshots(),
       builder: (context, snapshot) {
@@ -308,6 +433,7 @@ class _PrayerCardState extends State<_PrayerCard> {
   void initState() {
     super.initState();
     _next = _load();
+    DemoSessionController.instance.addListener(_reloadDemoSchedule);
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
@@ -316,7 +442,13 @@ class _PrayerCardState extends State<_PrayerCard> {
   @override
   void dispose() {
     _timer?.cancel();
+    DemoSessionController.instance.removeListener(_reloadDemoSchedule);
     super.dispose();
+  }
+
+  void _reloadDemoSchedule() {
+    if (Firebase.apps.isNotEmpty || !mounted) return;
+    setState(() => _next = _load());
   }
 
   Future<({Prayer prayer, DateTime startsAt, String timezone})?> _load() async {
@@ -324,11 +456,42 @@ class _PrayerCardState extends State<_PrayerCard> {
         ? FirebaseAuth.instance.currentUser
         : null;
     if (user == null) {
-      return (
-        prayer: Prayer.dhuhr,
-        startsAt: DateTime.now().add(const Duration(hours: 1, minutes: 17)),
-        timezone: 'Europe/Istanbul',
-      );
+      const timezoneName = 'Europe/Istanbul';
+      tz_data.initializeTimeZones();
+      final location = tz.getLocation(timezoneName);
+      final now = tz.TZDateTime.now(location);
+      final city = DemoSessionController.instance.city
+          .trim()
+          .toLowerCase()
+          .replaceAll('ı', 'i');
+      final coordinates = switch (city) {
+        'ankara' => (39.9334, 32.8597),
+        'bursa' => (40.1950, 29.0600),
+        'izmir' => (38.4237, 27.1428),
+        'konya' => (37.8746, 32.4932),
+        _ => (41.0082, 28.9784),
+      };
+      final service = AdhanPrayerTimeService();
+      for (var dayOffset = 0; dayOffset <= 1; dayOffset++) {
+        final schedule = await service.scheduleFor(
+          date: now.add(Duration(days: dayOffset)),
+          latitude: coordinates.$1,
+          longitude: coordinates.$2,
+          madhhab: DemoSessionController.instance.madhhab,
+          timezone: timezoneName,
+        );
+        final upcoming = schedule.windows
+            .where((window) => window.startsAt.isAfter(now))
+            .firstOrNull;
+        if (upcoming != null) {
+          return (
+            prayer: upcoming.prayer,
+            startsAt: upcoming.startsAt,
+            timezone: timezoneName,
+          );
+        }
+      }
+      return null;
     }
     final firestore = FirebaseFirestore.instance;
     final profile = await firestore.doc('users/${user.uid}').get();
@@ -398,14 +561,10 @@ class _PrayerCardState extends State<_PrayerCard> {
           final time = DateFormat('HH:mm').format(
             tz.TZDateTime.from(next.startsAt, tz.getLocation(next.timezone)),
           );
-          return Semantics(
-            label:
-                'Sıradaki namaz ${next.prayer.label}, saat $time, $remaining',
-            child: _content(
-              prayerLabel: 'SIRADAKİ · ${next.prayer.label.toUpperCase()}',
-              time: time,
-              remaining: remaining,
-            ),
+          return _content(
+            prayerLabel: '${next.prayer.label.toUpperCase()} VAKTİNE',
+            time: time,
+            remaining: remaining,
           );
         },
       );
@@ -417,11 +576,11 @@ class _PrayerCardState extends State<_PrayerCard> {
   }) => Container(
     padding: const EdgeInsets.all(22),
     decoration: BoxDecoration(
-      color: AppColors.brown,
+      color: AppColors.green,
       borderRadius: BorderRadius.circular(32),
       boxShadow: const <BoxShadow>[
         BoxShadow(
-          color: Color(0x214F3422),
+          color: Color(0x2E1E3A2F),
           blurRadius: 28,
           offset: Offset(0, 14),
         ),
@@ -430,14 +589,14 @@ class _PrayerCardState extends State<_PrayerCard> {
     child: Stack(
       children: <Widget>[
         Positioned(
-          right: -28,
-          top: -40,
+          right: -24,
+          top: -24,
           child: Container(
             width: 140,
             height: 140,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .06),
               shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: .06),
             ),
           ),
         ),
@@ -529,150 +688,6 @@ class _PrayerCardSkeleton extends StatelessWidget {
   );
 }
 
-class _GroupCard extends StatelessWidget {
-  const _GroupCard({required this.group, required this.onTap});
-
-  final GroupSummary group;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label:
-        '${group.name}, ${group.memberCount} üye, yüzde ${(group.participationRate * 100).round()} katılım',
-    child: Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(28),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(28),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: AppColors.line, width: .7),
-          ),
-          child: Column(
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  GroupAvatar(group: group),
-                  const SizedBox(width: 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          group.name,
-                          style: const TextStyle(
-                            color: AppColors.brown,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          group.city == null
-                              ? group.country
-                              : '${group.city}, ${group.country}',
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.greenMist,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: Text(
-                      '%${(group.participationRate * 100).round()}',
-                      style: const TextStyle(
-                        color: AppColors.green,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: <Widget>[
-                  _Stat(
-                    icon: Icons.people_outline_rounded,
-                    value: '${group.memberCount}/${group.capacity}',
-                  ),
-                  const _Dot(),
-                  _Stat(
-                    icon: Icons.local_fire_department_outlined,
-                    value: '${group.currentStreak} gün',
-                  ),
-                  const Spacer(),
-                  const Icon(
-                    Icons.arrow_forward_rounded,
-                    color: AppColors.brownSoft,
-                    size: 19,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 13),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(99),
-                child: LinearProgressIndicator(
-                  value: group.participationRate,
-                  minHeight: 7,
-                  color: AppColors.green,
-                  backgroundColor: AppColors.greenPale,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-class _Stat extends StatelessWidget {
-  const _Stat({required this.icon, required this.value});
-  final IconData icon;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: <Widget>[
-      Icon(icon, size: 17, color: AppColors.muted),
-      const SizedBox(width: 5),
-      Text(
-        value,
-        style: const TextStyle(
-          color: AppColors.muted,
-          fontWeight: FontWeight.w700,
-          fontSize: 13,
-        ),
-      ),
-    ],
-  );
-}
-
-class _Dot extends StatelessWidget {
-  const _Dot();
-
-  @override
-  Widget build(BuildContext context) => const Padding(
-    padding: EdgeInsets.symmetric(horizontal: 9),
-    child: CircleAvatar(radius: 2, backgroundColor: AppColors.line),
-  );
-}
-
 class _GroupSkeleton extends StatefulWidget {
   const _GroupSkeleton();
 
@@ -690,7 +705,8 @@ class _GroupSkeletonState extends State<_GroupSkeleton>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
+    );
+    _controller.repeat(reverse: true);
   }
 
   @override
@@ -700,18 +716,21 @@ class _GroupSkeletonState extends State<_GroupSkeleton>
   }
 
   @override
-  Widget build(BuildContext context) => FadeTransition(
-    opacity: Tween<double>(begin: .45, end: .9).animate(_controller),
-    child: Column(
-      children: List<Widget>.generate(
-        2,
-        (index) => Container(
-          height: 152,
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: AppColors.line),
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _controller,
+    builder: (context, child) => Opacity(
+      opacity: .45 + (_controller.value * .45),
+      child: Column(
+        children: List<Widget>.generate(
+          2,
+          (index) => Container(
+            height: 140,
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: AppColors.line),
+            ),
           ),
         ),
       ),

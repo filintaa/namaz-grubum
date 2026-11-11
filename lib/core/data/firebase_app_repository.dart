@@ -49,7 +49,9 @@ class FirebaseAppRepository implements AppRepository {
           'idempotencyKey': _uuid.v4(),
         });
     final data = Map<String, dynamic>.from(result.data as Map);
-    return data['groupId'] as String;
+    final groupId = data['groupId'] as String;
+    unawaited(AlarmCoordinator.instance.reschedule());
+    return groupId;
   }
 
   @override
@@ -76,23 +78,43 @@ class FirebaseAppRepository implements AppRepository {
     final subscriptions = <StreamSubscription<Object?>>[];
     controller = StreamController<void>(
       onListen: () {
-        void forward(Object? _) => controller.add(null);
+        void forward(Object? _) {
+          if (!controller.isClosed) controller.add(null);
+        }
+
         subscriptions.add(
-          _firestore.doc('groups/$groupId').snapshots().listen(forward),
+          _firestore.doc('groups/$groupId').snapshots().listen(
+            forward,
+            onError: (Object error) {
+              debugPrint('Group watch error: $error');
+            },
+          ),
         );
         subscriptions.add(
           _firestore
               .collection('groups/$groupId/members')
               .where('status', isEqualTo: 'active')
               .snapshots()
-              .listen(forward),
+              .listen(
+                forward,
+                onError: (Object error) {
+                  // Non-members may receive permission-denied; ignore safely.
+                  debugPrint('Group members watch error: $error');
+                },
+              ),
         );
         subscriptions.add(
           _firestore
               .collection('groups/$groupId/prayerDays/$dateKey/checkins')
               .where('prayer', isEqualTo: prayer.name)
               .snapshots()
-              .listen(forward),
+              .listen(
+                forward,
+                onError: (Object error) {
+                  // Non-members may receive permission-denied; ignore safely.
+                  debugPrint('Group checkins watch error: $error');
+                },
+              ),
         );
       },
       onCancel: () async {
@@ -238,12 +260,20 @@ class FirebaseAppRepository implements AppRepository {
       if (error.code == 'permission-denied') return const <GroupMember>[];
       rethrow;
     }
-    final checkins = await _firestore
-        .collection('groups/$groupId/prayerDays/$dateKey/checkins')
-        .where('prayer', isEqualTo: prayer.name)
-        .get();
+    final checkins = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    if (snapshot.docs.isNotEmpty) {
+      try {
+        final checkinsSnapshot = await _firestore
+            .collection('groups/$groupId/prayerDays/$dateKey/checkins')
+            .where('prayer', isEqualTo: prayer.name)
+            .get();
+        checkins.addAll(checkinsSnapshot.docs);
+      } on FirebaseException catch (error) {
+        if (error.code != 'permission-denied') rethrow;
+      }
+    }
     final statusByUser = <String, String>{
-      for (final document in checkins.docs)
+      for (final document in checkins)
         if (document.data()['userId'] is String)
           document.data()['userId'] as String:
               document.data()['status'] as String? ?? 'pending',
@@ -412,10 +442,15 @@ class FirebaseAppRepository implements AppRepository {
 
   @override
   Future<bool> hasPendingJoinRequest(String groupId) async {
-    final request = await _firestore
-        .doc('groups/$groupId/joinRequests/$_userId')
-        .get();
-    return request.data()?['status'] == 'pending';
+    try {
+      final request = await _firestore
+          .doc('groups/$groupId/joinRequests/$_userId')
+          .get();
+      return request.data()?['status'] == 'pending';
+    } on FirebaseException catch (error) {
+      if (error.code == 'permission-denied') return false;
+      rethrow;
+    }
   }
 
   @override
@@ -454,14 +489,22 @@ class FirebaseAppRepository implements AppRepository {
     final result = await _functions.httpsCallable('joinGroup').call(
       <String, Object>{'groupId': groupId, 'idempotencyKey': _uuid.v4()},
     );
-    return Map<String, dynamic>.from(result.data as Map)['approved'] as bool? ??
+    final approved =
+        Map<String, dynamic>.from(result.data as Map)['approved'] as bool? ??
         false;
+    if (approved) {
+      unawaited(AlarmCoordinator.instance.reschedule());
+    }
+    return approved;
   }
 
   @override
-  Future<void> leaveGroup(String groupId) => _functions
-      .httpsCallable('leaveGroup')
-      .call(<String, Object>{'groupId': groupId});
+  Future<void> leaveGroup(String groupId) async {
+    await _functions
+        .httpsCallable('leaveGroup')
+        .call(<String, Object>{'groupId': groupId});
+    unawaited(AlarmCoordinator.instance.reschedule());
+  }
 
   @override
   Future<void> transferGroupOwnership({
@@ -524,9 +567,12 @@ class FirebaseAppRepository implements AppRepository {
       });
 
   @override
-  Future<void> archiveGroup(String groupId) => _functions
-      .httpsCallable('archiveGroup')
-      .call(<String, Object>{'groupId': groupId});
+  Future<void> archiveGroup(String groupId) async {
+    await _functions
+        .httpsCallable('archiveGroup')
+        .call(<String, Object>{'groupId': groupId});
+    unawaited(AlarmCoordinator.instance.reschedule());
+  }
 
   @override
   Future<void> updateGroup({
@@ -534,12 +580,15 @@ class FirebaseAppRepository implements AppRepository {
     required String name,
     required Set<Prayer> prayers,
     required bool joinApprovalRequired,
-  }) => _functions.httpsCallable('updateGroup').call(<String, Object>{
-    'groupId': groupId,
-    'name': name,
-    'prayers': prayers.map((prayer) => prayer.name).toList(),
-    'joinApprovalRequired': joinApprovalRequired,
-  });
+  }) async {
+    await _functions.httpsCallable('updateGroup').call(<String, Object>{
+      'groupId': groupId,
+      'name': name,
+      'prayers': prayers.map((prayer) => prayer.name).toList(),
+      'joinApprovalRequired': joinApprovalRequired,
+    });
+    unawaited(AlarmCoordinator.instance.reschedule());
+  }
 
   @override
   Future<List<GroupJoinRequest>> pendingJoinRequests(String groupId) async {

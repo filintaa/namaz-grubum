@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "adhan": "^4.4.6",
-    "firebase-admin": "14.3.0",
-    "firebase-functions": "7.3.2",
+    "firebase-admin": "^14.5.0",
+    "firebase-functions": "^7.4.0",
     "sharp": "^0.35.4",
     "tz-lookup": "^6.1.25"
   },
@@ -27,6 +27,8 @@
     "typescript": "7.0.2"
   },
   "overrides": {
+    "@grpc/grpc-js": "1.14.7",
+    "rimraf": "6.1.4",
     "uuid": "11.1.1"
   }
 }

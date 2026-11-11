@@ -5,6 +5,63 @@ import 'package:namaz_grubum/core/services/alarm_service.dart';
 import 'package:namaz_grubum/core/services/local_notification_alarm_service.dart';
 
 void main() {
+  group('group-based prayer notification rules', () {
+    test('no groups produce no active prayers (no notifications)', () {
+      final prayers = AlarmCoordinator.extractActivePrayersFromGroupData(
+        const <Map<String, dynamic>>[],
+      );
+      expect(prayers, isEmpty);
+    });
+
+    test('inactive or archived groups are excluded', () {
+      final prayers = AlarmCoordinator.extractActivePrayersFromGroupData(
+        const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'status': 'archived',
+            'prayers': <String>['fajr', 'isha'],
+          },
+          <String, dynamic>{
+            'status': 'suspended',
+            'prayers': <String>['dhuhr'],
+          },
+        ],
+      );
+      expect(prayers, isEmpty);
+    });
+
+    test('group with single prayer schedules only that prayer', () {
+      final prayers = AlarmCoordinator.extractActivePrayersFromGroupData(
+        const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'status': 'active',
+            'prayers': <String>['fajr'],
+          },
+        ],
+      );
+      expect(prayers, equals(<Prayer>{Prayer.fajr}));
+    });
+
+    test('multiple groups combine unique tracked prayers', () {
+      final prayers = AlarmCoordinator.extractActivePrayersFromGroupData(
+        const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'status': 'active',
+            'prayers': <String>['fajr'],
+          },
+          <String, dynamic>{
+            'status': 'active',
+            'prayers': <String>['fajr', 'isha'],
+          },
+          <String, dynamic>{
+            'status': 'active',
+            'prayers': <String>['maghrib'],
+          },
+        ],
+      );
+      expect(prayers, equals(<Prayer>{Prayer.fajr, Prayer.isha, Prayer.maghrib}));
+    });
+  });
+
   group('prayer alarm planning', () {
     test('creates an escalating sequence with stable, distinct IDs', () {
       final startsAt = DateTime(2026, 9, 10, 5, 30);

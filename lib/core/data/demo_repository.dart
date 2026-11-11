@@ -1,8 +1,11 @@
 import '../domain/models.dart';
+import '../services/demo_session_controller.dart';
 import 'app_repository.dart';
 
 class DemoAppRepository implements AppRepository {
   final Set<String> _resolvedJoinRequests = <String>{};
+  final List<GroupSummary> _createdGroups = <GroupSummary>[];
+  int _createdGroupCount = 0;
   static const _groups = <GroupSummary>[
     GroupSummary(
       id: 'sabah-sekerleri',
@@ -76,15 +79,38 @@ class DemoAppRepository implements AppRepository {
     ),
   ];
 
+  List<GroupSummary> get _allGroups => <GroupSummary>[
+    ..._groups,
+    ..._createdGroups,
+  ];
+
   @override
   Future<String> createGroup(GroupDraft draft) async {
     await Future<void>.delayed(const Duration(milliseconds: 400));
-    return 'demo-created-group';
+    final id = 'demo-created-group-${++_createdGroupCount}';
+    _createdGroups.add(
+      GroupSummary(
+        id: id,
+        name: draft.name,
+        country: draft.countryCode == 'TR' ? 'Türkiye' : draft.countryCode,
+        city: draft.city,
+        prayers: List<Prayer>.unmodifiable(draft.prayers),
+        memberCount: 1,
+        capacity: 30,
+        activeMemberCount: 1,
+        currentStreak: 0,
+        participationRate: 0,
+        verificationType: draft.verificationType,
+        joinApprovalRequired: draft.joinApprovalRequired,
+        logoEmoji: draft.logoEmoji,
+      ),
+    );
+    return id;
   }
 
   @override
   Future<GroupSummary?> group(String groupId) async {
-    return _groups.where((group) => group.id == groupId).firstOrNull;
+    return _allGroups.where((group) => group.id == groupId).firstOrNull;
   }
 
   @override
@@ -97,8 +123,8 @@ class DemoAppRepository implements AppRepository {
   Future<List<GroupSummary>> discoverGroups({String query = ''}) async {
     await Future<void>.delayed(const Duration(milliseconds: 280));
     final normalized = query.trim().toLowerCase();
-    if (normalized.isEmpty) return _groups;
-    return _groups
+    if (normalized.isEmpty) return _allGroups;
+    return _allGroups
         .where(
           (group) => '${group.name} ${group.country} ${group.city ?? ''}'
               .toLowerCase()
@@ -128,12 +154,13 @@ class DemoAppRepository implements AppRepository {
   @override
   Future<List<GroupSummary>> myGroups() async {
     await Future<void>.delayed(const Duration(milliseconds: 240));
-    return _groups
+    return _allGroups
         .where(
           (group) =>
               group.id == 'sabah-sekerleri' ||
               group.id == 'ankara-bes-vakit' ||
-              group.id == 'bursa-yatsi-dostlari',
+              group.id == 'bursa-yatsi-dostlari' ||
+              _createdGroups.any((created) => created.id == group.id),
         )
         .toList();
   }
@@ -143,12 +170,24 @@ class DemoAppRepository implements AppRepository {
     String groupId, {
     Prayer prayer = Prayer.fajr,
   }) async {
-    if (groupId == 'sabah-sekerleri') {
-      return const <GroupMember>[
+    if (_createdGroups.any((group) => group.id == groupId)) {
+      return <GroupMember>[
         GroupMember(
           id: 'current-user',
-          displayName: 'Muhammet A.',
-          location: 'İstanbul',
+          displayName: DemoSessionController.instance.displayName,
+          location: DemoSessionController.instance.city,
+          status: CheckinStatus.pending,
+          role: GroupRole.owner,
+          isCurrentUser: true,
+        ),
+      ];
+    }
+    if (groupId == 'sabah-sekerleri') {
+      return <GroupMember>[
+        GroupMember(
+          id: 'current-user',
+          displayName: DemoSessionController.instance.displayName,
+          location: DemoSessionController.instance.city,
           status: CheckinStatus.pending,
           role: GroupRole.owner,
           isCurrentUser: true,
@@ -222,11 +261,11 @@ class DemoAppRepository implements AppRepository {
         ),
       ];
     }
-    return const <GroupMember>[
+    return <GroupMember>[
       GroupMember(
         id: 'current-user',
-        displayName: 'Muhammet A.',
-        location: 'İstanbul',
+        displayName: DemoSessionController.instance.displayName,
+        location: DemoSessionController.instance.city,
         status: CheckinStatus.completed,
         isCurrentUser: true,
       ),

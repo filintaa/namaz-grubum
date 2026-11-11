@@ -6,9 +6,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/domain/models.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/account_service.dart';
 import '../../../core/services/app_session_controller.dart';
+import '../../../core/services/demo_session_controller.dart';
 import '../../../core/services/prayer_schedule_sync_service.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/telemetry_service.dart';
@@ -42,8 +44,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _emailVerified = user?.emailVerified ?? false;
     _email = user?.email;
     _diagnostics = TelemetryService.instance.enabled;
-    if (_firebase) _load();
-    if (_firebase) _loadClaims();
+    if (_firebase) {
+      _load();
+      _loadClaims();
+    } else {
+      final demo = DemoSessionController.instance;
+      _name = demo.displayName;
+      _city = demo.city;
+      _madhhab = demo.madhhab == Madhhab.shafii ? 'Şafii' : 'Hanefi';
+      _notifications = demo.notificationsEnabled;
+    }
   }
 
   Future<void> _loadClaims() async {
@@ -243,6 +253,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             fallbackCity: _city,
             force: true,
           );
+        } else {
+          await DemoSessionController.instance.updateProfile(
+            name: _name,
+            city: _city,
+          );
         }
       } catch (error) {
         if (mounted) {
@@ -281,6 +296,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       } catch (_) {
         if (mounted) setState(() => _notifications = !value);
       }
+    } else {
+      await DemoSessionController.instance.setNotificationsEnabled(value);
     }
   }
 
@@ -347,9 +364,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _restartOnboarding() async {
-    if (_firebase) {
-      await AppSessionController.instance.restartOnboarding();
-    }
+    await AppSessionController.instance.restartOnboarding();
     if (mounted) context.go('/onboarding');
   }
 

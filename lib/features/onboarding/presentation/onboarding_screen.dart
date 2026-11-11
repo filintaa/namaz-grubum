@@ -9,6 +9,8 @@ import '../../../core/domain/models.dart';
 import '../../../core/services/alarm_coordinator.dart';
 import '../../../core/services/account_service.dart';
 import '../../../core/services/app_session_controller.dart';
+import '../../../core/services/demo_session_controller.dart';
+import '../../../core/services/invite_service.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/prayer_schedule_sync_service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -37,6 +39,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   bool _notificationsEnabled = true;
   bool? _notificationPermissionGranted;
   bool _requestingNotifications = false;
+  String? _nameError;
+  String? _cityError;
 
   Future<void> _requestNotificationPermission() async {
     if (!mounted ||
@@ -54,12 +58,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } catch (error) {
       debugPrint('Notification permission request failed: $error');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Bildirim izni kontrol edilemedi. Tekrar deneyebilirsin.',
-            ),
-          ),
+        await _showMessage(
+          'Bildirim izni kontrol edilemedi. Tekrar deneyebilirsin.',
         );
       }
     } finally {
@@ -76,6 +76,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _continue() async {
+    if (_page == 0 && _nameController.text.trim().isEmpty) {
+      setState(() {
+        _nameError = 'Devam etmek için görünen adını yaz.';
+      });
+      return;
+    }
+    if (_page == 1 && _cityController.text.trim().isEmpty) {
+      setState(() => _cityError = 'Namaz vakitleri için bir şehir yaz.');
+      return;
+    }
     if (_page < 2) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 320),
@@ -84,13 +94,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
     if (_nameController.text.trim().isEmpty) {
+      setState(() {
+        _nameError = 'Devam etmek için görünen adını yaz.';
+      });
       _pageController.animateToPage(
         0,
         duration: const Duration(milliseconds: 320),
         curve: Curves.easeOutCubic,
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Devam etmek için görünen adını yaz.')),
       );
       return;
     }
@@ -164,22 +174,54 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         }
       }
       if (Firebase.apps.isEmpty) {
+        await DemoSessionController.instance.completeOnboarding(
+          displayName: _nameController.text.trim(),
+          city: _cityController.text.trim(),
+          madhhab: _madhhab,
+          notificationsEnabled: _notificationsEnabled,
+        );
         await AppSessionController.instance.markOnboardingComplete();
       }
-      if (mounted) context.go('/home');
+      if (mounted) {
+        final pendingGroupId = InviteService.instance.takePendingGroupId();
+        if (pendingGroupId != null && pendingGroupId.isNotEmpty) {
+          context.go('/home/groups/$pendingGroupId');
+        } else {
+          context.go('/home');
+        }
+      }
     } catch (error) {
       debugPrint('Onboarding completion failed: $error');
       if (mounted) {
         final message = error is PrayerScheduleSyncException
             ? error.message
             : 'Kurulum tamamlanamadı. Bağlantını kontrol edip tekrar dene.';
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+        await _showMessage(message);
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _showMessage(String message) async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger != null) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    await showCupertinoDialog<void>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        content: Text(message),
+        actions: <Widget>[
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _signIn() async {
@@ -229,7 +271,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         password: passwordValue,
       );
       await AppSessionController.instance.refreshForCurrentUser();
-      if (mounted) context.go('/home');
+      if (mounted) {
+        final pendingGroupId = InviteService.instance.takePendingGroupId();
+        if (pendingGroupId != null && pendingGroupId.isNotEmpty) {
+          context.go('/home/groups/$pendingGroupId');
+        } else {
+          context.go('/home');
+        }
+      }
     } on FirebaseAuthException {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -297,12 +346,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               children: <Widget>[
                 _WelcomeStep(
                   nameController: _nameController,
+                  nameError: _nameError,
+                  onNameChanged: (_) {
+                    if (_nameError != null) {
+                      setState(() => _nameError = null);
+                    }
+                  },
                   gender: _gender,
                   onGenderChanged: (value) => setState(() => _gender = value),
                 ),
                 _PreferencesStep(
                   madhhab: _madhhab,
                   cityController: _cityController,
+                  cityError: _cityError,
+                  onCityChanged: (_) {
+                    if (_cityError != null) {
+                      setState(() => _cityError = null);
+                    }
+                  },
                   onMadhhabChanged: (value) => setState(() => _madhhab = value),
                 ),
                 _PermissionsStep(
@@ -323,28 +384,63 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 16),
             child: Column(
               children: <Widget>[
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List<Widget>.generate(
-                    3,
-                    (index) => AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      width: index == _page ? 24 : 7,
-                      height: 7,
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      decoration: BoxDecoration(
-                        color: index == _page
-                            ? AppColors.brown
-                            : AppColors.brownPale,
-                        borderRadius: BorderRadius.circular(99),
+                  children: <Widget>[
+                    SizedBox(
+                      width: 44,
+                      child: _page == 0
+                          ? null
+                          : IconButton(
+                              tooltip: 'Geri',
+                              onPressed: _submitting
+                                  ? null
+                                  : () => _pageController.previousPage(
+                                      duration: const Duration(
+                                        milliseconds: 280,
+                                      ),
+                                      curve: Curves.easeOutCubic,
+                                    ),
+                              icon: const Icon(Icons.arrow_back_rounded),
+                            ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List<Widget>.generate(
+                          3,
+                          (index) => AnimatedContainer(
+                            duration: const Duration(milliseconds: 220),
+                            width: index == _page ? 28 : 8,
+                            height: 8,
+                            margin: const EdgeInsets.symmetric(horizontal: 3),
+                            decoration: BoxDecoration(
+                              color: index == _page
+                                  ? AppColors.green
+                                  : AppColors.brownPale,
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    SizedBox(
+                      width: 44,
+                      child: Text(
+                        '${_page + 1}/3',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 10),
                 AdaptivePrimaryButton(
                   label: _submitting
                       ? 'Hazırlanıyor…'
@@ -359,26 +455,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       : _continue,
                 ),
                 if (_page == 0) ...[
-                  const SizedBox(height: 4),
-                  TextButton(
-                    onPressed: Firebase.apps.isNotEmpty ? _signIn : null,
-                    child: const Text('Zaten hesabım var'),
-                  ),
-                  TextButton(
-                    onPressed: Firebase.apps.isNotEmpty ? _resetPassword : null,
-                    child: const Text('Şifremi unuttum'),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: <Widget>[
+                      const Text(
+                        'Hesabın var mı?',
+                        style: TextStyle(color: AppColors.muted, fontSize: 13),
+                      ),
+                      TextButton(
+                        onPressed: Firebase.apps.isNotEmpty ? _signIn : null,
+                        child: const Text('Giriş yap'),
+                      ),
+                      TextButton(
+                        onPressed: Firebase.apps.isNotEmpty
+                            ? _resetPassword
+                            : null,
+                        child: const Text('Şifremi unuttum'),
+                      ),
+                    ],
                   ),
                 ],
-                const SizedBox(height: 6),
-                const Text(
-                  'Bilgilerin yalnızca doğru vakitleri ve uygun grupları göstermek için kullanılır.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
-                ),
               ],
             ),
           ),
@@ -394,39 +492,37 @@ class _StepLayout extends StatelessWidget {
     required this.title,
     required this.body,
     required this.children,
+    required this.icon,
   });
 
   final String eyebrow;
   final String title;
   final String body;
   final List<Widget> children;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).height < 750;
     return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(20, compact ? 14 : 38, 20, 20),
+      padding: EdgeInsets.fromLTRB(20, compact ? 12 : 30, 20, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Container(
-            width: compact ? 48 : 56,
-            height: compact ? 48 : 56,
-            decoration: const BoxDecoration(
-              color: AppColors.brown,
-              shape: BoxShape.circle,
+            width: compact ? 44 : 50,
+            height: compact ? 44 : 50,
+            decoration: BoxDecoration(
+              color: AppColors.greenPale,
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: const Icon(
-              Icons.nights_stay_rounded,
-              color: Colors.white,
-              size: 25,
-            ),
+            child: Icon(icon, color: AppColors.green, size: 24),
           ),
           SizedBox(height: compact ? 12 : 24),
           Text(
             eyebrow.toUpperCase(),
             style: const TextStyle(
-              color: AppColors.brownSoft,
+              color: AppColors.green,
               fontWeight: FontWeight.w800,
               fontSize: 12,
               letterSpacing: 1.2,
@@ -454,17 +550,21 @@ class _StepLayout extends StatelessWidget {
             ),
           ),
           SizedBox(height: compact ? 14 : 22),
-          Container(
+          SizedBox(
             width: double.infinity,
-            padding: EdgeInsets.all(compact ? 14 : 18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: AppColors.line, width: .7),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: children,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.warmWhite,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: AppColors.line),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(compact ? 14 : 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: children,
+                ),
+              ),
             ),
           ),
         ],
@@ -476,25 +576,42 @@ class _StepLayout extends StatelessWidget {
 class _WelcomeStep extends StatelessWidget {
   const _WelcomeStep({
     required this.nameController,
+    required this.nameError,
+    required this.onNameChanged,
     required this.gender,
     required this.onGenderChanged,
   });
 
   final TextEditingController nameController;
+  final String? nameError;
+  final ValueChanged<String> onNameChanged;
   final Gender gender;
   final ValueChanged<Gender> onGenderChanged;
 
   @override
   Widget build(BuildContext context) => _StepLayout(
-    eyebrow: 'Namaz Grubum',
-    title: 'Namaza yalnız kalkma.',
-    body: 'Grubunu kur. Birlikte uyanın. Birbirinizi namaza hatırlatın.',
+    icon: Icons.groups_2_outlined,
+    eyebrow: 'Seni tanıyalım',
+    title: 'Namaza birlikte hazırlan.',
+    body: 'Adını belirle; sana uygun grupları ve deneyimi hazırlayalım.',
     children: <Widget>[
       const _FieldLabel('İsmin'),
       AdaptiveTextField(
         controller: nameController,
-        placeholder: 'Ad ve soyad baş harfi',
+        placeholder: 'Görünen adın',
+        onChanged: onNameChanged,
       ),
+      if (nameError != null) ...<Widget>[
+        const SizedBox(height: 7),
+        Text(
+          nameError!,
+          style: const TextStyle(
+            color: CupertinoColors.systemRed,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
       const SizedBox(height: 22),
       const _FieldLabel('Cinsiyet'),
       Row(
@@ -529,17 +646,22 @@ class _PreferencesStep extends StatelessWidget {
   const _PreferencesStep({
     required this.madhhab,
     required this.cityController,
+    required this.cityError,
+    required this.onCityChanged,
     required this.onMadhhabChanged,
   });
 
   final Madhhab madhhab;
   final TextEditingController cityController;
+  final String? cityError;
+  final ValueChanged<String> onCityChanged;
   final ValueChanged<Madhhab> onMadhhabChanged;
 
   @override
   Widget build(BuildContext context) => _StepLayout(
-    eyebrow: 'Vakitler',
-    title: 'Doğru vakit, doğru yerde.',
+    icon: Icons.schedule_rounded,
+    eyebrow: 'Vakitlerini hazırlayalım',
+    title: 'Doğru vakit, bulunduğun yerde.',
     body:
         'Namaz vakitlerini bulunduğun şehre ve tercihine göre hazırlayacağız.',
     children: <Widget>[
@@ -569,7 +691,19 @@ class _PreferencesStep extends StatelessWidget {
         controller: cityController,
         placeholder: 'Şehir ara',
         prefixIcon: Icons.location_city_outlined,
+        onChanged: onCityChanged,
       ),
+      if (cityError != null) ...<Widget>[
+        const SizedBox(height: 7),
+        Text(
+          cityError!,
+          style: const TextStyle(
+            color: CupertinoColors.systemRed,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     ],
   );
 }
@@ -599,16 +733,15 @@ class _PermissionsStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _StepLayout(
-    eyebrow: 'Hazırlık',
-    title: 'Vakti kaçırma.',
-    body:
-        'Alarmlar cihazında planlanır; internet olmasa da temel hatırlatmalar çalışmaya devam eder.',
+    icon: Icons.notifications_active_outlined,
+    eyebrow: 'Kontrol sende',
+    title: 'Hatırlatmaları sen yönet.',
+    body: 'İzinleri şimdi seçebilir, daha sonra Ayarlar’dan değiştirebilirsin.',
     children: <Widget>[
       _PermissionRow(
         icon: Icons.notifications_none_rounded,
         title: 'Bildirimler',
-        description:
-            'Vakit öncesi, vakitte ve kılana kadar takip hatırlatmaları',
+        description: 'Vakit öncesi ve vakit sırasında namaz hatırlatmaları',
         enabled: notificationsEnabled,
         onChanged: onNotificationsChanged,
       ),
@@ -619,7 +752,7 @@ class _PermissionsStep extends StatelessWidget {
               ? 'Bildirim izni verildi. Sesli namaz hatırlatmaları hazırlanacak.'
               : permissionGranted == false
               ? 'İzin kapalı. iPhone/telefon Ayarları → Namaz Grubum → Bildirimler bölümünden açabilirsin. İzin vermeden de devam edebilirsin.'
-              : 'Namaza kaldırabilmemiz için ses ve bildirim izni ver. Sabah vaktinde daha sık hatırlatırız; kıldığında takip durur.',
+              : 'Hatırlatma alabilmek için sistem bildirim iznini aç. İzin vermeden de kurulumu tamamlayabilirsin.',
           style: const TextStyle(
             color: AppColors.muted,
             fontSize: 12,

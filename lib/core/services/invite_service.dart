@@ -18,6 +18,16 @@ class InviteService {
   void Function(String groupId)? _onGroup;
   String? _pendingGroupId;
 
+  void setPendingGroupId(String groupId) {
+    _pendingGroupId = groupId;
+  }
+
+  String? takePendingGroupId() {
+    final value = _pendingGroupId;
+    _pendingGroupId = null;
+    return value;
+  }
+
   Future<void> initialize() async {
     final initial = await _appLinks.getInitialLink();
     _accept(initial);
